@@ -25,9 +25,6 @@
     <div class="inventory-caption">“Enumerated” means AEGIS’s allowlisted calls succeeded. Partial categories include verified APIs deferred because no safe request bound is available; this is not complete AWS service coverage.</div>
     <div class="inventory-caption" id="inventory-deferred"></div>
     <div id="inventory-unassessed" class="inventory-caption"></div>
-    <div class="inventory-divider"></div>
-    <div class="subheading">Resource types <span>from saved inventory</span></div>
-    <div id="inventory-types" class="inventory-types"><div class="loading-state">Loading resource types…</div></div>
     <a class="panel-link" href="/assessments">Browse assessment history <span aria-hidden="true">→</span></a>
   </article>
 
@@ -57,6 +54,13 @@
     <div id="coverage-status-list" class="coverage-status-list"></div>
     <p class="coverage-disclaimer">Unsupported checks and errors are evidence gaps, not passes.</p>
     <a class="panel-link" id="coverage-detail-link" href="/assessments">Review persisted details <span aria-hidden="true">→</span></a>
+  </article>
+</section>
+
+<section class="resource-types-section" aria-label="Discovered resource types">
+  <article class="panel command-panel resource-types-panel">
+    <div class="panel-heading"><div><div class="eyebrow">INVENTORY BREAKDOWN</div><h2>Resource types</h2></div><span class="resource-types-note">From latest saved inventory</span></div>
+    <div id="inventory-types" class="inventory-types"><div class="loading-state">Loading resource types…</div></div>
   </article>
 </section>
 
