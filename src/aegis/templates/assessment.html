@@ -25,6 +25,11 @@
   </section>
   <section class="panel section-panel">
     <div class="panel-heading"><div><div class="eyebrow">NORMALIZED INVENTORY</div><h2>Resources</h2></div></div>
+    <div class="filter-row resource-filters">
+      <label>Source service<select id="resource-service"><option value="">All services</option></select></label>
+      <label>Resource type<select id="resource-type"><option value="">All resource types</option></select></label>
+      <button id="resource-filter" class="button button-secondary" type="button">Apply filters</button>
+    </div>
     <div id="resources-list"><div class="loading-state">Loading resources…</div></div>
     <div class="pagination-row"><span id="resources-page" class="muted small-text"></span><div class="pagination-controls"><button id="resources-previous" class="button button-quiet" type="button">← Previous</button><button id="resources-next" class="button button-quiet" type="button">Next →</button></div></div>
   </section>

@@ -23,7 +23,8 @@ from aegis.locking import ScanAlreadyRunning, acquire_scan_lock
 from aegis.reporting import build_report, compare_assessments, render_markdown
 from aegis.service import run_assessment
 from aegis.web_db import (list_assessments, list_findings, list_operations,
-                          list_resources, load_assessment, read_only_connect, schema_available)
+                          list_resources, load_assessment, read_only_connect, resource_filter_options,
+                          schema_available)
 from aegis.web_ui import mount_dashboard
 from aegis.workflow import assessment_preview, run_preflight
 
@@ -119,11 +120,15 @@ def _safe_assessment(assessment: dict) -> dict:
 
 def _empty_overview() -> dict:
     return {"latest_assessment": None, "recent_assessments": [], "resource_count": 0,
-            "resource_types": [],
+            "resource_types": [], "resources_by_service": {}, "resources_by_type": {},
+            "discovered_but_unassessed_count": 0,
             "summary": {"finding_count": 0, "by_outcome": {key: 0 for key in OUTCOMES},
                         "by_severity": {key: 0 for key in SEVERITIES}},
             "coverage": {"operation_count": 0, "by_status": {}, "unsupported_checks": [],
-                         "errors": [], "limitations": []}}
+                         "incomplete_operations": [],
+                         "errors": [], "limitations": [], "discovery": {"services": [], "deferred_operations": []},
+                         "assessment": {"by_outcome": {key: 0 for key in OUTCOMES}},
+                         "evidence": {"evaluations_with_references": 0, "evaluations_without_references": 0}}}
 
 
 def create_app(settings: Settings | None = None, *, allowed_hosts: list[str] | None = None) -> FastAPI:
@@ -144,7 +149,9 @@ def create_app(settings: Settings | None = None, *, allowed_hosts: list[str] | N
         response.headers.setdefault("Content-Security-Policy",
                                     "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
                                     "form-action 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'")
-        if request.url.path.startswith("/api/") or request.url.path in {"/", "/assessments", "/compare"} or request.url.path.startswith("/assessments/"):
+        if (request.url.path.startswith(("/api/", "/static/"))
+                or request.url.path in {"/", "/assessments", "/compare"}
+                or request.url.path.startswith("/assessments/")):
             response.headers.setdefault("Cache-Control", "no-store")
         return response
 
@@ -343,7 +350,11 @@ def create_app(settings: Settings | None = None, *, allowed_hosts: list[str] | N
                 report = _safe_report(snapshot)
                 return {"latest_assessment": report["assessment"], "recent_assessments": recent,
                         "resource_count": report["scope"]["cloud_resource_count"],
-                        "resource_types": report["scope"]["resource_types"], "summary": report["summary"],
+                        "resource_types": report["scope"]["resource_types"],
+                        "resources_by_service": report["scope"]["resources_by_service"],
+                        "resources_by_type": report["scope"]["resources_by_type"],
+                        "discovered_but_unassessed_count": report["scope"]["discovered_but_unassessed_count"],
+                        "summary": report["summary"],
                         "coverage": report["coverage"]}
         except Exception:
             raise HTTPException(status_code=503, detail="Assessment database is unavailable") from None
@@ -389,14 +400,22 @@ def create_app(settings: Settings | None = None, *, allowed_hosts: list[str] | N
 
     @app.get("/api/assessments/{assessment_id}/resources")
     def resources(assessment_id: str, limit: Annotated[int, Query(ge=1, le=100)] = 50,
-                  offset: Annotated[int, Query(ge=0, le=100000)] = 0):
+                  offset: Annotated[int, Query(ge=0, le=100000)] = 0,
+                  service: Annotated[str | None, Query(max_length=40)] = None,
+                  resource_type: Annotated[str | None, Query(max_length=80)] = None):
+        if service is not None and not re.fullmatch(r"[a-z0-9_-]+", service):
+            raise HTTPException(status_code=422, detail="Invalid request parameters")
+        if resource_type is not None and not re.fullmatch(r"[a-z0-9_-]+", resource_type):
+            raise HTTPException(status_code=422, detail="Invalid request parameters")
         assessment_id = _assessment_id(assessment_id)
         with read_only_connect(settings.database) as db:
             exists = db.execute("SELECT 1 FROM assessments WHERE id=?", (assessment_id,)).fetchone() if db else None
-            rows, total = list_resources(db, assessment_id, limit, offset) if exists else ([], 0)
+            rows, total = list_resources(db, assessment_id, limit, offset, service, resource_type) if exists else ([], 0)
+            filters = resource_filter_options(db, assessment_id) if exists else {"services": [], "resource_types": []}
         if not exists:
             raise HTTPException(status_code=404, detail="Assessment not found")
-        return {"items": sanitize(rows), "total": total, "limit": limit, "offset": offset}
+        return {"items": sanitize(rows), "total": total, "limit": limit, "offset": offset,
+                "available_filters": filters}
 
     @app.get("/api/assessments/{assessment_id}/operations")
     def operations(assessment_id: str, limit: Annotated[int, Query(ge=1, le=100)] = 50,

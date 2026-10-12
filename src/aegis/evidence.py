@@ -23,6 +23,18 @@ def sanitize(value: Any, key: str | None = None) -> Any:
     if isinstance(value, dict):
         return {str(k): sanitize(v, str(k)) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
+        # Cloud tags carry their key and value as sibling fields. Redact values
+        # based on the tag key as well as normal JSON field names.
+        if key and key.lower() in {"tags", "tagset"}:
+            safe_items = []
+            for item in value:
+                if isinstance(item, dict):
+                    tag_key = item.get("Key", item.get("key"))
+                    tag_value_key = "Value" if "Value" in item else "value" if "value" in item else None
+                    if tag_value_key and isinstance(tag_key, str) and SENSITIVE_KEY.search(tag_key):
+                        item = {**item, tag_value_key: "[REDACTED]"}
+                safe_items.append(sanitize(item))
+            return safe_items
         return [sanitize(item) for item in value]
     if isinstance(value, str):
         value = AWS_ACCESS_KEY.sub("[REDACTED]", value)

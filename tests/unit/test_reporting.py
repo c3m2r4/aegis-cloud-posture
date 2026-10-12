@@ -210,3 +210,53 @@ def test_comparing_an_assessment_with_itself_is_stable():
     result = compare_assessments(data, copy.deepcopy(data))
     assert len(result["findings"]["unchanged"]) == 1
     assert result["summary"]["inventory"]["unchanged"] == 1
+
+
+def test_discovery_and_assessment_coverage_are_separate_and_services_require_all_expected_calls():
+    stored = snapshot("inventory", resources=[
+        {"resource_type": "ec2_instance", "resource_id": "i-1"},
+        {"resource_type": "aws_identity", "resource_id": "account"},
+        {"resource_type": "iam_policy_version", "resource_id": "policy#v1"},
+        {"resource_type": "s3_bucket", "resource_id": "bucket"},
+    ], operations=[{"service": "ec2", "operation": "DescribeInstances", "status": "SUCCESS", "observed_at": "2026-01-01T00:00:00Z"}])
+    report = build_report(stored)
+    assert report["scope"]["resource_count"] == 2
+    assert report["scope"]["evidence_record_types"] == ["aws_identity", "iam_policy_version"]
+    assert report["scope"]["resources_by_service"] == {"Compute": 1, "Storage": 1}
+    compute = next(item for item in report["coverage"]["discovery"]["services"] if item["service"] == "Compute")
+    assert compute["state"] == "PARTIAL"
+    assert compute["missing_operations"]
+    assert "Compute" in report["coverage"]["discovery"]["services_partially_enumerated"]
+    assert report["coverage"]["assessment"]["resources_without_evaluations"] == 2
+
+
+def test_verified_but_unbounded_operations_are_reported_as_deferred_coverage_gaps():
+    from aegis.reporting import RESOURCE_SERVICE
+    from aegis.adapters import specifications
+
+    operations = [{"service": spec.service, "operation": spec.operation, "status": "SUCCESS"}
+                  for spec in specifications()
+                  if RESOURCE_SERVICE.get(spec.resource_type) in {"Compute", "Networking"}]
+    report = build_report(snapshot("deferred", operations=operations))
+    by_service = {item["service"]: item for item in report["coverage"]["discovery"]["services"]}
+    assert by_service["Compute"]["state"] == "PARTIAL"
+    assert by_service["Networking"]["state"] == "PARTIAL"
+    deferred = report["coverage"]["discovery"]["deferred_operations"]
+    assert {(item["service"], item["operation"]) for item in deferred} == {
+        ("ec2", "DescribeKeyPairs"), ("ec2", "DescribeAddresses")
+    }
+    deferred_limitations = [item for item in report["coverage"]["limitations"] if "verified but deferred" in item]
+    assert len(deferred_limitations) == 2
+    assert all("no request-side page-size bound" in item for item in deferred_limitations)
+
+
+def test_continuation_marker_is_reported_as_incomplete_enumeration():
+    stored = snapshot("partial", resources=[{"resource_type": "s3_bucket", "resource_id": "bucket"}], operations=[
+        {"id": 4, "service": "s3", "operation": "ListBuckets", "status": "INCOMPLETE",
+         "capability": "SUPPORTED_BUT_UNVERIFIED", "error": "PaginationIncomplete", "observed_at": "2026-01-01"},
+    ])
+    stored["assessment"]["status"] = "PARTIAL"
+    report = build_report(stored)
+    assert report["coverage"]["incomplete_operations"][0]["status"] == "INCOMPLETE"
+    assert "s3:ListBuckets" in " ".join(report["coverage"]["limitations"])
+    assert "INCOMPLETE" in render_markdown(report)

@@ -18,6 +18,13 @@
     <div class="panel-heading"><div><div class="eyebrow">DISCOVERED INVENTORY</div><h2>Assets in scope</h2></div><span class="panel-symbol" aria-hidden="true">◈</span></div>
     <div class="inventory-total"><span id="metric-resources">—</span><span>resources observed</span></div>
     <div class="inventory-caption" id="metric-time">Based on the latest persisted assessment</div>
+    <div class="inventory-caption" id="inventory-discovery-time"></div>
+    <div class="inventory-divider"></div>
+    <div class="subheading">Resource counts <span>by service · saved inventory</span></div>
+    <div id="inventory-services" class="inventory-service-list"><div class="loading-state">Loading service inventory…</div></div>
+    <div class="inventory-caption">“Enumerated” means AEGIS’s allowlisted calls succeeded. Partial categories include verified APIs deferred because no safe request bound is available; this is not complete AWS service coverage.</div>
+    <div class="inventory-caption" id="inventory-deferred"></div>
+    <div id="inventory-unassessed" class="inventory-caption"></div>
     <div class="inventory-divider"></div>
     <div class="subheading">Resource types <span>from saved inventory</span></div>
     <div id="inventory-types" class="inventory-types"><div class="loading-state">Loading resource types…</div></div>
@@ -46,6 +53,7 @@
     <div class="coverage-stat"><span class="coverage-stat-icon">✓</span><div><strong id="coverage-operations">—</strong><span>read operations recorded</span></div></div>
     <div class="coverage-stat coverage-stat-red"><span class="coverage-stat-icon">!</span><div><strong id="coverage-errors">—</strong><span>operation or rule errors</span></div></div>
     <div class="coverage-stat coverage-stat-amber"><span class="coverage-stat-icon">◌</span><div><strong id="coverage-unsupported">—</strong><span>unsupported operations</span></div></div>
+    <div class="coverage-stat coverage-stat-amber"><span class="coverage-stat-icon">…</span><div><strong id="coverage-incomplete">—</strong><span>incomplete enumerations</span></div></div>
     <div id="coverage-status-list" class="coverage-status-list"></div>
     <p class="coverage-disclaimer">Unsupported checks and errors are evidence gaps, not passes.</p>
     <a class="panel-link" id="coverage-detail-link" href="/assessments">Review persisted details <span aria-hidden="true">→</span></a>

@@ -202,11 +202,21 @@ def assess(
             raise typer.Exit(2)
         value = {"endpoint": safe_endpoint_url(settings.endpoint_url), "region": settings.region,
                  "database": str(settings.database), "pagination_supported": False,
+                 "pagination_behavior": "Continuation markers are recorded as INCOMPLETE; no continuation request is made until verified.",
                  "operations": [{"service": item.service, "operation": item.operation,
                                  "resource_type": item.resource_type} for item in specifications()] + [
                                      {"service": "iam", "operation": "GetPolicyVersion",
                                       "resource_type": "iam_policy_version",
-                                      "scope": "Default version for each returned local policy"}],
+                                      "scope": "Default version for each returned local policy"},
+                                     {"service": "events", "operation": "ListRules",
+                                      "resource_type": "eventbridge_rule",
+                                      "scope": "Default bus and each returned event bus"},
+                                     {"service": "eks", "operation": "ListNodegroups",
+                                      "resource_type": "eks_nodegroup",
+                                      "scope": "For each returned EKS cluster"},
+                                     {"service": "eks", "operation": "ListFargateProfiles",
+                                      "resource_type": "eks_fargate_profile",
+                                      "scope": "For each returned EKS cluster"}],
                  "rules": [{"id": rule.rule_id, "title": rule.title, "severity": rule.severity,
                             "resource_type": rule.resource_type, "required_evidence": list(rule.required_evidence)}
                            for rule in RULES],
@@ -222,7 +232,7 @@ def assess(
             typer.echo("Rules:")
             for rule in value["rules"]:
                 typer.echo(f"  {rule['id']} {rule['severity']}: {rule['title']}")
-            typer.echo("Pagination is disabled; unsupported evidence remains NOT_SUPPORTED, never a pass.")
+            typer.echo("Pagination continuation requests are disabled until verified; a returned next-page marker is recorded as INCOMPLETE.")
         return
     if not yes:
         if not sys.stdin.isatty():

@@ -30,14 +30,21 @@ def assessment_preview(settings: Settings) -> dict:
                         "resource_type": spec.resource_type}
                        for spec in specifications()] + [
                            {"service": "iam", "operation": "GetPolicyVersion", "resource_type": "iam_policy_version",
-                            "scope": "Default version for each local policy returned by ListPolicies"}],
+                            "scope": "Default version for each local policy returned by ListPolicies"},
+                           {"service": "events", "operation": "ListRules", "resource_type": "eventbridge_rule",
+                            "scope": "Default bus and each event bus returned by ListEventBuses"},
+                           {"service": "eks", "operation": "ListNodegroups", "resource_type": "eks_nodegroup",
+                            "scope": "For each cluster returned by ListClusters"},
+                           {"service": "eks", "operation": "ListFargateProfiles", "resource_type": "eks_fargate_profile",
+                            "scope": "For each cluster returned by ListClusters"}],
         "rules": [{"id": rule.rule_id, "title": rule.title, "severity": rule.severity,
                    "resource_type": rule.resource_type, "required_evidence": list(rule.required_evidence),
                    "description": rule.description}
                   for rule in RULES],
         "pagination_supported": False,
+        "pagination_behavior": "Continuation markers are recorded as INCOMPLETE; no continuation request is made until verified.",
         "unsupported_capabilities": [
-            "Pagination is disabled because Floci behavior has not been verified.",
+            "Pagination continuation behavior has not been verified; any returned continuation marker makes that operation INCOMPLETE.",
             "Log retention remains NOT_SUPPORTED when retentionInDays is absent.",
         ],
         "expected_outputs": ["Persisted sanitized evidence", "Inventory", "Rule outcomes", "JSON and Markdown reports"],
@@ -168,7 +175,7 @@ def _run_preflight_locked(settings: Settings, adapter: FlociAdapter | None = Non
     else:
         checks.append({"id": "required_read_operations", "state": "PASS" if not failures else "WARN",
                        "message": ("Verified read operations completed." if not failures else
-                                   f"{len(failures)} read operation(s) were unsupported or errored."),
+                                   f"{len(failures)} read operation(s) were incomplete, unsupported, or errored."),
                        "next_step": "Review operation availability in this checklist. You may continue for a partial result or fix the provider and run preflight again."})
     checks.append({"id": "scope", "state": "PASS" if identity_ok else "WARN",
                    "message": "Scope is limited to the configured endpoint and region and the resource types shown in the preview.",
@@ -179,7 +186,7 @@ def _run_preflight_locked(settings: Settings, adapter: FlociAdapter | None = Non
     return {"readiness": readiness, "checks": checks, "operations": operation_checks,
             "identity": account, "limitations": [
                 "This verifies only the listed read operations; it is not comprehensive cloud coverage.",
-                "List operations are not paginated; additional pages may be omitted.",
+                "List operations use bounded requests. If a response indicates another page, AEGIS records INCOMPLETE and does not assume an unverified pagination scheme.",
                 "A scan performs a fresh collection after confirmation, so its results can differ from preflight.",
             ]}
 

@@ -91,6 +91,7 @@ def test_missing_database_is_empty_and_never_created(tmp_path):
     overview = client.get("/api/overview").json()
     assert overview["latest_assessment"] is None
     assert overview["resource_types"] == []
+    assert overview["coverage"]["discovery"]["deferred_operations"] == []
     assert overview["summary"]["by_outcome"] == {outcome: 0 for outcome in OUTCOMES}
     missing_id, other_id = str(uuid.uuid4()), str(uuid.uuid4())
     paths = [
@@ -146,6 +147,9 @@ def test_overview_and_all_outcomes_preserve_partial_state(setup_api):
     assert overview["latest_assessment"]["id"] == second
     assert overview["latest_assessment"]["status"] == "PARTIAL"
     assert overview["resource_types"] == ["ec2_security_group"]
+    deferred = overview["coverage"]["discovery"]["deferred_operations"]
+    assert {(item["service"], item["operation"]) for item in deferred} == {
+        ("ec2", "DescribeKeyPairs"), ("ec2", "DescribeAddresses")}
     assert "do-not-return" not in json.dumps(overview)
     assert "credential-marker" not in json.dumps(overview)
     assert "query-marker" not in json.dumps(overview)
@@ -186,6 +190,24 @@ def test_lists_filters_bounds_and_missing_assessments(setup_api):
     missing = str(uuid.uuid4())
     assert client.get(f"/api/assessments/{missing}/reports/json").status_code == 404
     assert client.get(f"/api/assessments/{first}/reports/html").status_code == 422
+
+
+def test_resource_inventory_service_and_type_filters_use_persisted_fields(setup_api):
+    client, database, first, _second = setup_api
+    with connect(database) as db:
+        db.execute("INSERT INTO resources(assessment_id,resource_type,resource_id,name,source_service,"
+                   "source_operation,observed_at,attributes_json) VALUES(?,?,?,?,?,?,?,?)",
+                   (first, "s3_bucket", "bucket-1", "bucket", "s3", "ListBuckets", NOW, "{}"))
+    all_items = client.get(f"/api/assessments/{first}/resources").json()
+    assert all_items["total"] == 2
+    assert all_items["available_filters"] == {
+        "services": ["ec2", "s3"], "resource_types": ["ec2_security_group", "s3_bucket"]}
+    filtered_service = client.get(f"/api/assessments/{first}/resources?service=s3").json()
+    assert [item["resource_type"] for item in filtered_service["items"]] == ["s3_bucket"]
+    filtered_type = client.get(f"/api/assessments/{first}/resources?resource_type=ec2_security_group").json()
+    assert [item["source_service"] for item in filtered_type["items"]] == ["ec2"]
+    assert client.get(f"/api/assessments/{first}/resources?service=ec2%27%20OR%201%3D1").status_code == 422
+    assert client.get(f"/api/assessments/{first}/resources?resource_type=bad.type").status_code == 422
 
 
 def test_reports_are_persisted_sanitized_and_use_safe_names(setup_api):
@@ -246,6 +268,14 @@ def test_get_routes_never_invoke_cloud_adapter(setup_api, monkeypatch):
              f"/api/assessments/{first}/reports/json", f"/api/comparisons/{first}/{second}",
              "/", "/assessments", f"/assessments/{first}", "/compare", "/static/dashboard.js", "/static/dashboard.css"]
     assert all(client.get(path).status_code == 200 for path in paths)
+
+
+def test_dashboard_shell_api_and_static_assets_disable_caching(setup_api):
+    client, _database, _first, _second = setup_api
+    for path in ("/", "/api/overview", "/static/dashboard.js", "/static/dashboard.css"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
 
 
 def test_host_validation_and_request_errors_do_not_disclose_internal_values(setup_api):

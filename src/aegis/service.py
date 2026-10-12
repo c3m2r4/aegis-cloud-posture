@@ -73,6 +73,8 @@ def _error_category(value: str | None) -> str | None:
     """Persist a short provider/SDK error code, not an untrusted message body."""
     if not value:
         return None
+    if value.startswith("Pagination is required"):
+        return "PaginationIncomplete"
     candidate = value.split(":", 1)[0].strip()
     return candidate if re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,79}", candidate) else "OperationError"
 
@@ -115,12 +117,17 @@ def _evaluate_assessment(settings: Settings, assessment_id: str) -> None:
                     if not candidates or not any(op["status"] == "SUCCESS" for op in candidates):
                         failed = next((op for op in candidates if op["status"] == "ERROR"), None)
                         unsupported = next((op for op in candidates if op["status"] == "UNSUPPORTED"), None)
+                        incomplete = next((op for op in candidates if op["status"] == "INCOMPLETE"), None)
                         if failed:
                             reason = failed.get("error") or f"Required operation {service}:{operation} failed."
                             missing_evidence = RuleResult("ERROR", str(sanitize(reason)))
                         elif unsupported:
                             reason = unsupported.get("error") or f"Required operation {service}:{operation} is unsupported."
                             missing_evidence = RuleResult("NOT_SUPPORTED", str(sanitize(reason)))
+                        elif incomplete:
+                            missing_evidence = RuleResult(
+                                "NOT_SUPPORTED",
+                                f"Required operation {service}:{operation} returned a continuation marker; remaining pages were not verified.")
                         else:
                             missing_evidence = RuleResult("NOT_SUPPORTED",
                                 f"Required operation evidence {service}:{operation} is missing for this resource.")

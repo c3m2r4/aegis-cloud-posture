@@ -168,7 +168,7 @@
   async function loadOverview() {
     const errorBox = byId("overview-error");
     hideError(errorBox);
-    ["outcome-list", "severity-list", "recent-assessments", "inventory-types", "top-findings", "evidence-gaps"]
+    ["outcome-list", "severity-list", "recent-assessments", "inventory-types", "inventory-services", "top-findings", "evidence-gaps"]
       .forEach((id) => setLoading(byId(id), "Loading persisted assessment data…"));
     try {
       const [overview, history] = await Promise.all([getJson("/api/overview"), getJson("/api/assessments?limit=8&offset=0")]);
@@ -188,6 +188,30 @@
       byId("context-endpoint").textContent = endpointLabel;
       byId("metric-time").textContent = latest ? `Assessment started ${formatDate(latest.started_at)}` : "Create a saved assessment with the AEGIS CLI";
       byId("metric-resources").textContent = latest ? String(overview.resource_count) : "—";
+      const latestDiscovery = overview.coverage.discovery?.last_successful_discovery_at;
+      byId("inventory-discovery-time").textContent = latestDiscovery
+        ? `Last successful discovery operation: ${formatDate(latestDiscovery)}` : "No successful discovery operation recorded.";
+      const serviceInventory = byId("inventory-services");
+      clear(serviceInventory);
+      const serviceCounts = latest ? (overview.resources_by_service || {}) : {};
+      const serviceCoverage = latest ? (overview.coverage.discovery?.services || []) : [];
+      if (!serviceCoverage.length) empty(serviceInventory, "No discovery records", "Service counts appear after a discovery run.");
+      else serviceCoverage.forEach((item) => {
+        const row = node("div", "inventory-service-row");
+        row.append(
+          node("span", "inventory-service-name", item.service),
+          badge(item.state),
+          node("strong", "inventory-service-count", serviceCounts[item.service] || 0),
+        );
+        serviceInventory.append(row);
+      });
+      const deferred = overview.coverage.discovery?.deferred_operations || [];
+      byId("inventory-deferred").textContent = deferred.map((item) =>
+        `${item.service}:${item.operation} was verified but deferred: ${item.reason}`
+      ).join(" ");
+      byId("inventory-unassessed").textContent = latest
+        ? `${overview.discovered_but_unassessed_count || 0} discovered resources have no persisted rule evaluation; this is not a pass.`
+        : "";
       byId("metric-findings").textContent = latest ? String(overview.summary.finding_count) : "—";
       const statusBadge = byId("latest-status-badge");
       clear(statusBadge);
@@ -216,6 +240,7 @@
       const ruleUnsupported = overview.summary.by_outcome.NOT_SUPPORTED || 0;
       byId("coverage-errors").textContent = String(overview.coverage.errors.length + ruleErrors);
       byId("coverage-unsupported").textContent = String(overview.coverage.unsupported_checks.length + ruleUnsupported);
+      byId("coverage-incomplete").textContent = String((overview.coverage.incomplete_operations || []).length);
       const statusList = byId("coverage-status-list");
       clear(statusList);
       Object.entries(overview.coverage.by_status).forEach(([name, count]) => {
@@ -278,8 +303,9 @@
       }
     } catch (error) {
       showError(errorBox, error.message, loadOverview);
-      ["outcome-list", "severity-list", "recent-assessments", "inventory-types", "top-findings", "evidence-gaps"]
+      ["outcome-list", "severity-list", "recent-assessments", "inventory-types", "inventory-services", "top-findings", "evidence-gaps"]
         .forEach((id) => empty(byId(id), "Data unavailable", "Retry the persisted data request."));
+      byId("inventory-deferred").textContent = "";
     }
   }
 
@@ -347,6 +373,7 @@
 
   const sectionOffsets = { findings: 0, resources: 0, operations: 0 };
   const sectionTotals = { findings: 0, resources: 0, operations: 0 };
+  const resourceFilters = { service: "", resourceType: "" };
   let findingPageItems = [];
   let currentAssessmentId = "";
 
@@ -467,7 +494,18 @@
     const target = byId("resources-list");
     setLoading(target, "Loading normalized resources…");
     try {
-      const data = await getJson(`/api/assessments/${encodeURIComponent(currentAssessmentId)}/resources?limit=${pageSize}&offset=${sectionOffsets.resources}`);
+      const query = new URLSearchParams({ limit: String(pageSize), offset: String(sectionOffsets.resources) });
+      if (resourceFilters.service) query.set("service", resourceFilters.service);
+      if (resourceFilters.resourceType) query.set("resource_type", resourceFilters.resourceType);
+      const data = await getJson(`/api/assessments/${encodeURIComponent(currentAssessmentId)}/resources?${query}`);
+      const updateOptions = (id, values, selected) => {
+        const select = byId(id);
+        if (select.options.length > 1) return;
+        values.forEach((value) => select.append(new Option(value, value)));
+        select.value = selected;
+      };
+      updateOptions("resource-service", data.available_filters.services, resourceFilters.service);
+      updateOptions("resource-type", data.available_filters.resource_types, resourceFilters.resourceType);
       sectionTotals.resources = data.total;
       clear(target);
       if (!data.items.length) empty(target, "No resources on this page", "This assessment did not persist resource records in this page of results.");
@@ -494,7 +532,7 @@
         const row = node("article", "operation-row");
         const name = node("div", "operation-name", operation.operation || "Unknown operation");
         name.append(node("span", "operation-service", operation.service || "Unknown service"));
-        const statusMessage = operation.status === "SUCCESS" ? "Read completed" : operation.status === "UNSUPPORTED" ? "This operation is not supported by the configured local environment." : operation.status === "ERROR" ? "The operation returned an error; affected checks are incomplete." : "Operation state unavailable.";
+        const statusMessage = operation.status === "SUCCESS" ? "Read completed" : operation.status === "UNSUPPORTED" ? "This operation is not supported by the configured local environment." : operation.status === "INCOMPLETE" ? "The API returned more pages; remaining pages were not fetched because pagination has not been verified." : operation.status === "ERROR" ? "The operation returned an error; affected checks are incomplete." : "Operation state unavailable.";
         row.append(name, badge(operation.status), node("div", "operation-error", statusMessage));
         row.append(node("div", "operation-hash", operation.evidence_sha256 ? `SHA-256 ${operation.evidence_sha256}` : "No response hash"));
         target.append(row);
@@ -678,7 +716,7 @@
     target.append(node("h3", "", "Configured scope"));
     target.append(keyValue([["Endpoint", data.endpoint], ["Region", data.region],
       ["Database", data.database.state === "not_created" ? "Will initialize when scan starts" : data.database.state],
-      ["Pagination", data.pagination_supported ? "Supported" : "Disabled (not verified)"]]));
+      ["Pagination", data.pagination_supported ? "Supported" : "Disabled; continuation markers show as incomplete"]]));
     const operations = node("ul", "workflow-list");
     data.operations.forEach((item) => operations.append(node("li", "", `${item.service}:${item.operation} → ${item.resource_type || "operation"}`)));
     target.append(node("h3", "", "Verified read operations"), operations);
@@ -868,6 +906,12 @@
     loadDetail();
     byId("finding-filter").addEventListener("click", () => { sectionOffsets.findings = 0; loadFindings(); });
     byId("finding-search").addEventListener("input", renderFindingPage);
+    byId("resource-filter").addEventListener("click", () => {
+      resourceFilters.service = byId("resource-service").value;
+      resourceFilters.resourceType = byId("resource-type").value;
+      sectionOffsets.resources = 0;
+      loadResources();
+    });
     ["findings", "resources", "operations"].forEach((section) => {
       byId(`${section}-previous`).addEventListener("click", () => { sectionOffsets[section] = Math.max(0, sectionOffsets[section] - pageSize); ({ findings: loadFindings, resources: loadResources, operations: loadOperations })[section](); });
       byId(`${section}-next`).addEventListener("click", () => { if (sectionOffsets[section] + pageSize < sectionTotals[section]) { sectionOffsets[section] += pageSize; ({ findings: loadFindings, resources: loadResources, operations: loadOperations })[section](); } });

@@ -44,8 +44,10 @@ def test_assessment_preview_uses_static_allowlist_and_does_not_create_database(t
     settings = Settings(database=tmp_path / "absent" / "aegis.sqlite")
     preview = assessment_preview(settings)
     assert preview["database"]["state"] == "not_created"
-    assert len(preview["operations"]) == len(specifications()) + 1
-    assert preview["operations"][-1]["operation"] == "GetPolicyVersion"
+    assert len(preview["operations"]) == len(specifications()) + 4
+    assert {item["operation"] for item in preview["operations"][-4:]} == {
+        "GetPolicyVersion", "ListRules", "ListNodegroups", "ListFargateProfiles"
+    }
     assert {rule["id"] for rule in preview["rules"]} == {"AEGIS-IAM-001", "AEGIS-EC2-001", "AEGIS-LOGS-001"}
     assert preview["pagination_supported"] is False
     assert not settings.database.exists() and not settings.database.parent.exists()

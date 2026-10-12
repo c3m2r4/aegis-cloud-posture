@@ -111,13 +111,32 @@ def list_findings(connection: sqlite3.Connection, assessment_id: str, limit: int
 
 
 def list_resources(connection: sqlite3.Connection, assessment_id: str, limit: int,
-                   offset: int) -> tuple[list[dict], int]:
-    total = connection.execute("SELECT COUNT(*) FROM resources WHERE assessment_id=?", (assessment_id,)).fetchone()[0]
+                   offset: int, service: str | None = None,
+                   resource_type: str | None = None) -> tuple[list[dict], int]:
+    clauses, params = ["assessment_id=?"], [assessment_id]
+    if service is not None:
+        clauses.append("source_service=?")
+        params.append(service)
+    if resource_type is not None:
+        clauses.append("resource_type=?")
+        params.append(resource_type)
+    where = " AND ".join(clauses)
+    total = connection.execute("SELECT COUNT(*) FROM resources WHERE " + where, params).fetchone()[0]
     rows = connection.execute(
         "SELECT resource_type,resource_id,name,source_service,source_operation,observed_at,attributes_json "
-        "FROM resources WHERE assessment_id=? ORDER BY resource_type,resource_id LIMIT ? OFFSET ?",
-        (assessment_id, limit, offset)).fetchall()
+        "FROM resources WHERE " + where + " ORDER BY resource_type,resource_id LIMIT ? OFFSET ?",
+        (*params, limit, offset)).fetchall()
     return _decode_rows(rows, ("attributes_json",)), total
+
+
+def resource_filter_options(connection: sqlite3.Connection, assessment_id: str) -> dict[str, list[str]]:
+    services = [row[0] for row in connection.execute(
+        "SELECT DISTINCT source_service FROM resources WHERE assessment_id=? ORDER BY source_service",
+        (assessment_id,)).fetchall()]
+    resource_types = [row[0] for row in connection.execute(
+        "SELECT DISTINCT resource_type FROM resources WHERE assessment_id=? ORDER BY resource_type",
+        (assessment_id,)).fetchall()]
+    return {"services": services, "resource_types": resource_types}
 
 
 def list_operations(connection: sqlite3.Connection, assessment_id: str, limit: int,

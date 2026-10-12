@@ -5,9 +5,43 @@ import json
 from collections import Counter
 from typing import Any
 
+from aegis.adapters import specifications
+
 OUTCOMES = ("PASS", "FAIL", "NOT_APPLICABLE", "NOT_SUPPORTED", "ERROR")
 SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
 NON_CLOUD_RESOURCE_TYPES = {"aws_identity", "iam_policy_version"}
+
+RESOURCE_SERVICE = {
+    "ec2_instance": "Compute", "ec2_image": "Compute", "ec2_security_group": "Networking",
+    "ec2_vpc": "Networking", "ec2_volume": "Storage", "ec2_subnet": "Networking",
+    "ec2_network_interface": "Networking", "ec2_route_table": "Networking",
+    "ec2_internet_gateway": "Networking", "ec2_nat_gateway": "Networking", "ec2_key_pair": "Compute",
+    "ec2_address": "Networking",
+    "s3_bucket": "Storage", "rds_db_instance": "Database", "rds_db_cluster": "Database",
+    "rds_db_subnet_group": "Database", "rds_db_snapshot": "Database", "dynamodb_table": "DynamoDB",
+    "lambda_function": "Serverless", "lambda_layer": "Serverless", "eks_cluster": "EKS",
+    "eks_nodegroup": "EKS", "eks_fargate_profile": "EKS", "ecs_cluster": "Containers", "ecr_repository": "Containers",
+    "elbv2_load_balancer": "ELB", "elb_load_balancer": "ELB", "sqs_queue": "SQS",
+    "apigateway_rest_api": "API Gateway", "apigatewayv2_api": "API Gateway", "eventbridge_event_bus": "EventBridge",
+    "eventbridge_rule": "EventBridge", "ses_identity": "SES Mailbox",
+    "stepfunctions_state_machine": "Step Functions", "cloudformation_stack": "CloudFormation",
+    "iam_user": "Identity", "iam_role": "Identity", "iam_group": "Identity", "iam_policy": "Identity",
+    "iam_policy_version": "Identity", "iam_instance_profile": "Identity", "aws_identity": "Identity", "secretsmanager_secret": "Secrets Manager",
+    "kms_key": "KMS", "ssm_parameter": "Parameter Store", "cloudwatch_log_group": "CloudWatch Logs",
+    "scheduler_schedule": "Cloud Scheduler",
+}
+
+DEFERRED_OPERATIONS = (
+    {"service": "ec2", "operation": "DescribeKeyPairs", "category": "Compute",
+     "reason": "Verified against Floci, but the current SDK operation has no request-side page-size bound; deferred to avoid an unbounded inventory request."},
+    {"service": "ec2", "operation": "DescribeAddresses", "category": "Networking",
+     "reason": "Verified against Floci, but the current SDK operation has no request-side page-size bound; deferred to avoid an unbounded inventory request."},
+)
+
+
+def _counts(items: list[dict[str, Any]], field: str) -> dict[str, int]:
+    counts = Counter(str(item.get(field, "unknown")) for item in items)
+    return dict(sorted(counts.items()))
 
 
 def cloud_resource_count(resources: list[dict[str, Any]]) -> int:
@@ -143,6 +177,7 @@ def build_report(snapshot: dict[str, Any]) -> dict[str, Any]:
     operations = snapshot.get("operations", [])
     unsupported = [op for op in operations if op.get("status") == "UNSUPPORTED"]
     errors = [op for op in operations if op.get("status") == "ERROR"]
+    incomplete = [op for op in operations if op.get("status") == "INCOMPLETE"]
     findings = snapshot.get("findings", [])
     counts_outcome = {name: sum(f.get("outcome") == name for f in findings) for name in OUTCOMES}
     counts_severity = {name: sum(f.get("outcome") == "FAIL" and f.get("severity") == name for f in findings)
@@ -150,29 +185,119 @@ def build_report(snapshot: dict[str, Any]) -> dict[str, Any]:
     assessment = snapshot.get("assessment", {})
     limitations = [f"{op.get('service')}:{op.get('operation')} is unsupported" for op in unsupported]
     limitations += [f"{op.get('service')}:{op.get('operation')} returned an error" for op in errors]
+    limitations += [f"{op.get('service')}:{op.get('operation')} returned an unverified continuation marker; discovery is incomplete"
+                    for op in incomplete]
     limitations += [f"{finding.get('rule_id')} on {finding.get('resource_type')}:{finding.get('resource_id')} is NOT_SUPPORTED: {finding.get('reason', 'required evidence unavailable')}"
                     for finding in findings if finding.get("outcome") == "NOT_SUPPORTED"]
     limitations += [f"{finding.get('rule_id')} on {finding.get('resource_type')}:{finding.get('resource_id')} has an evaluation ERROR: {finding.get('reason', 'evaluation failed')}"
                     for finding in findings if finding.get("outcome") == "ERROR"]
+    limitations += [f"{item['service']}:{item['operation']} is verified but deferred: {item['reason']}"
+                    for item in DEFERRED_OPERATIONS]
     limitations.append("AEGIS did not apply remediation; rule guidance is advisory and is not evidence that a change was made.")
-    incomplete_checks = any(finding.get("outcome") in {"NOT_SUPPORTED", "ERROR"} for finding in findings)
+    incomplete_checks = bool(incomplete) or any(finding.get("outcome") in {"NOT_SUPPORTED", "ERROR"} for finding in findings)
     if assessment.get("status") == "RUNNING":
         limitations.append("Assessment collection/evaluation is still running; this snapshot is incomplete and is not a security pass.")
     if assessment.get("status") in {"PARTIAL", "FAILED"} or incomplete_checks:
         limitations.append("One or more discovery operations or rule checks have incomplete evidence; the assessment is not a security pass.")
     if cloud_resource_count(snapshot.get("resources", [])) == 0:
         limitations.append("No resources were discovered; no resource-level security conclusions are available.")
+    resources = snapshot.get("resources", [])
+    inventory_assets = [r for r in resources if r.get("resource_type") not in NON_CLOUD_RESOURCE_TYPES]
+    resource_types = sorted({r.get("resource_type") for r in inventory_assets if r.get("resource_type")})
+    evidence_record_types = sorted({r.get("resource_type") for r in resources
+                                    if r.get("resource_type") in NON_CLOUD_RESOURCE_TYPES})
+    assessed_keys = {(f.get("resource_type"), f.get("resource_id")) for f in findings
+                     if f.get("resource_type") and f.get("resource_id")}
+    inventory_by_service = Counter(RESOURCE_SERVICE.get(r.get("resource_type"), "Unmapped") for r in inventory_assets)
+    inventory_by_type = _counts(inventory_assets, "resource_type")
+    operation_categories = {(spec.service, spec.operation): RESOURCE_SERVICE.get(spec.resource_type, "Unmapped")
+                            for spec in specifications()}
+    operation_categories[("iam", "GetPolicyVersion")] = "Identity"
+    operation_categories[("eks", "ListNodegroups")] = "EKS"
+    operation_categories[("eks", "ListFargateProfiles")] = "EKS"
+    expected_by_service: dict[str, set[tuple[str, str]]] = {}
+    for key, category in operation_categories.items():
+        if key in {("iam", "GetPolicyVersion"), ("eks", "ListNodegroups"), ("eks", "ListFargateProfiles")}:
+            continue
+        expected_by_service.setdefault(category, set()).add(key)
+    deferred_by_service: dict[str, list[dict[str, str]]] = {}
+    for item in DEFERRED_OPERATIONS:
+        deferred_by_service.setdefault(item["category"], []).append(
+            {"service": item["service"], "operation": item["operation"], "reason": item["reason"]})
+    service_ops: dict[str, list[dict[str, Any]]] = {}
+    for op in operations:
+        category = operation_categories.get((op.get("service"), op.get("operation")))
+        if category:
+            service_ops.setdefault(category, []).append(op)
+    discovery_services = []
+    for category in sorted(expected_by_service):
+        items = service_ops.get(category, [])
+        statuses = {str(op.get("status", "UNKNOWN")) for op in items}
+        observed = {(op.get("service"), op.get("operation")) for op in items}
+        missing_operation = bool(expected_by_service[category] - observed)
+        deferred = deferred_by_service.get(category, [])
+        if not items:
+            state = "NOT_VERIFIED"
+        elif statuses == {"SUCCESS"} and not missing_operation:
+            state = "PARTIAL" if deferred else "ENUMERATED"
+        elif "INCOMPLETE" in statuses:
+            state = "INCOMPLETE"
+        elif "SUCCESS" in statuses:
+            state = "PARTIAL"
+        elif statuses == {"UNSUPPORTED"}:
+            state = "UNSUPPORTED"
+        elif statuses == {"ERROR"}:
+            state = "ERROR"
+        else:
+            state = "NOT_VERIFIED"
+        discovery_services.append({"service": category, "state": state,
+                                   "operation_count": len(items),
+                                   "expected_operation_count": len(expected_by_service[category]),
+                                   "deferred_operation_count": len(deferred),
+                                   "deferred_operations": deferred,
+                                   "missing_operations": [{"service": service, "operation": operation}
+                                                         for service, operation in sorted(expected_by_service[category] - observed)],
+                                   "operations": [{"service": op.get("service"), "operation": op.get("operation"),
+                                                   "status": op.get("status"), "capability": op.get("capability")}
+                                                  for op in items],
+                                   "resource_count": inventory_by_service.get(category, 0)})
+    successful_discovery_services = sorted(item["service"] for item in discovery_services
+                                           if item["state"] == "ENUMERATED")
     return {
         "schema_version": "1.0", "report_type": "aegis-assessment",
         "assessment": assessment,
         "scope": {"endpoint": assessment.get("endpoint"),
                   "region": assessment.get("region"),
-                  "resource_count": len(snapshot.get("resources", [])),
-                  "cloud_resource_count": cloud_resource_count(snapshot.get("resources", [])),
-                  "resource_types": sorted({r.get("resource_type") for r in snapshot.get("resources", []) if r.get("resource_type")})},
+                  "resource_count": len(inventory_assets),
+                  "record_count": len(resources),
+                  "evidence_record_types": evidence_record_types,
+                  "cloud_resource_count": cloud_resource_count(resources),
+                  "resource_types": resource_types,
+                  "resources_by_service": dict(sorted(inventory_by_service.items())),
+                  "resources_by_type": inventory_by_type,
+                  "discovered_but_unassessed_count": sum((r.get("resource_type"), r.get("resource_id")) not in assessed_keys for r in inventory_assets)},
         "coverage": {"operation_count": len(operations),
                      "by_status": dict(sorted(Counter(str(op.get("status", "UNKNOWN")) for op in operations).items())),
-                     "unsupported_checks": unsupported, "errors": errors,
+                     "unsupported_checks": unsupported, "errors": errors, "incomplete_operations": incomplete,
+                     "discovery": {"successful_operations": sum(op.get("status") == "SUCCESS" for op in operations),
+                                   "last_successful_discovery_at": max((op.get("observed_at", "") for op in operations
+                                                                         if op.get("status") == "SUCCESS"), default=None),
+                                   "services_enumerated": successful_discovery_services,
+                                   "services": discovery_services,
+                                   "services_not_verified": [item["service"] for item in discovery_services if item["state"] == "NOT_VERIFIED"],
+                                   "services_partially_enumerated": [item["service"] for item in discovery_services if item["state"] in {"PARTIAL", "INCOMPLETE"}],
+                                   "services_unsupported": [item["service"] for item in discovery_services if item["state"] == "UNSUPPORTED"],
+                                   "services_with_errors": [item["service"] for item in discovery_services if item["state"] == "ERROR"],
+                                   "deferred_operations": [item for service_items in deferred_by_service.values()
+                                                           for item in service_items],
+                                   "resources_by_service": dict(sorted(inventory_by_service.items())),
+            "resources_by_type": inventory_by_type},
+                     "assessment": {"evaluation_count": len(findings),
+                                    "by_outcome": {name: sum(f.get("outcome") == name for f in findings) for name in OUTCOMES},
+                                    "resources_with_evaluations": len(assessed_keys),
+                                    "resources_without_evaluations": sum((r.get("resource_type"), r.get("resource_id")) not in assessed_keys for r in inventory_assets)},
+                     "evidence": {"evaluations_with_references": sum(bool(f.get("evidence_refs")) for f in findings),
+                                  "evaluations_without_references": sum(not f.get("evidence_refs") for f in findings)},
                      "limitations": limitations},
         "summary": {"finding_count": len(findings), "by_outcome": counts_outcome, "by_severity": counts_severity},
         "findings": findings,
@@ -225,11 +350,16 @@ def render_markdown(report: dict[str, Any]) -> str:
         elif finding.get("remediation") and finding.get("outcome") in {"NOT_SUPPORTED", "ERROR"}:
             lines.append(f"- General rule guidance (not a determination that changes are needed): {finding['remediation']}")
         lines.append("")
-    lines += ["## Discovery coverage", "", f"Operations recorded: {coverage.get('operation_count', 0)}", ""]
+    lines += ["## Discovery coverage", "", f"Operations recorded: {coverage.get('operation_count', 0)}", "",
+              "### Persisted resources by service", "", "| Service | Resources |", "|---|---:|"]
+    lines.extend(f"| {service} | {count} |" for service, count in scope.get("resources_by_service", {}).items())
+    if not scope.get("resources_by_service"):
+        lines.append("| None discovered | 0 |")
+    lines += ["", "These are enumerated inventory objects, not an account-wide coverage or compliance score.", ""]
     for status, count in coverage.get("by_status", {}).items():
         lines.append(f"- {status}: {count}")
-    lines += ["", "### Unsupported checks and errors", ""]
-    if not coverage.get("unsupported_checks") and not coverage.get("errors"):
+    lines += ["", "### Unsupported checks, incomplete pages, and errors", ""]
+    if not coverage.get("unsupported_checks") and not coverage.get("errors") and not coverage.get("incomplete_operations"):
         lines.append("None recorded.")
     for op in coverage.get("unsupported_checks", []):
         lines.append(f"- Unsupported: `{op.get('service')}:{op.get('operation')}` — {op.get('error') or 'capability unavailable'} (operation record {op.get('id')}; evidence SHA-256: {json.dumps(op.get('evidence_sha256'))})")
@@ -237,6 +367,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         evidence_note = (f"evidence SHA-256: `{op['evidence_sha256']}`" if op.get("evidence_sha256")
                          else "no response evidence hash (the operation returned no evidence payload)")
         lines.append(f"- Error: `{op.get('service')}:{op.get('operation')}` — {op.get('error') or 'operation failed'} (operation record {op.get('id')}; {evidence_note})")
+    for op in coverage.get("incomplete_operations", []):
+        lines.append(f"- Incomplete: `{op.get('service')}:{op.get('operation')}` returned a continuation marker; remaining pages were not fetched.")
     lines += ["", "### Coverage limitations", ""]
     lines.extend(f"- {item}" for item in coverage.get("limitations", []))
     if not coverage.get("limitations"):

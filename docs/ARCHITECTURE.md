@@ -4,6 +4,8 @@
 
 AEGIS is a local-first assessment tool for the configured Floci endpoint. Its results must distinguish API observations, inferred risks, simulated cases, unsupported operations, and errors. The initial implementation is read-only. Nothing in this document asserts complete AWS compatibility, production readiness, or autonomous detection.
 
+The current discovery allowlist and live Floci response counts are maintained in [DISCOVERY.md](DISCOVERY.md). That audit supersedes the initial operation inventory below; the historical notes are retained to explain the original verification boundary and its evolution.
+
 ## Existing lab assessment
 
 ### Repository and files inspected
@@ -35,11 +37,11 @@ The script suppresses many errors using `|| true` or redirects, so the script's 
 |---|---|---|
 | STS identity | Supported and observed | `GetCallerIdentity` returned an identity response. |
 | S3 bucket inventory | Supported and observed | `ListBuckets` returned bucket records. Bucket policy/public-access configuration still needs separate operation probes. |
-| EC2 instance inventory | Supported and observed | `DescribeInstances` returned instances. `DescribeSecurityGroups` was independently verified and returned ingress CIDRs and port ranges; VPC/subnet data and pagination remain separately unverified. |
-| IAM local policy listing and document | Supported and observed | `ListPolicies --scope Local` returned policies. `GetPolicyVersion` for an observed default version returned a policy document. Attached entities, roles, trust policy, and effective permission analysis remain unverified. |
+| EC2 inventory | Supported and observed | `DescribeInstances`, `DescribeImages`, `DescribeSecurityGroups`, `DescribeVpcs`, `DescribeSubnets`, volumes, network interfaces, route tables, internet gateways, and NAT gateways were probed. Current resource counts and operation states are in `DISCOVERY.md`. |
+| IAM inventory | Supported and observed | Local `ListPolicies` plus default `GetPolicyVersion`, `ListUsers`, `ListRoles`, and `ListGroups` returned valid response shapes. This is not effective-permission or trust-policy analysis. |
 | CloudWatch Logs group inventory | Supported and observed | `DescribeLogGroups` returned groups and `storedBytes`. `retentionInDays` was omitted in live observations, so retention checks are `NOT_SUPPORTED` for those groups. Resource policy, pagination and stream operations remain unverified. |
-| CloudTrail, Lambda, DynamoDB, SQS, EventBridge, RDS, EKS, KMS, Secrets Manager, SSM, API Gateway, ELB, Step Functions, CloudFormation, SES | Intended/configured by lab notes, operation-level status unverified here | Bootstrap section or phase note is not sufficient proof. Must probe read-only operation and record success/failure per operation. |
-| Pagination and throttling | Unverified | Implement only with operation-specific validated tokens; do not assume AWS semantics. |
+| Lambda, DynamoDB, SQS, EventBridge, RDS, EKS, ECS/ECR, Scheduler, KMS, Secrets Manager, SSM, API Gateway, ELBv2, Step Functions, CloudFormation, SES identity | Supported and observed at operation level | Each allowlisted read call is listed in `DISCOVERY.md`; the live Floci probes succeeded. This does not establish coverage of every resource kind in each AWS service. |
+| Pagination and throttling | Continuation behavior unverified | Requests use API limits where available, retries are disabled, and a detected continuation marker is persisted as `INCOMPLETE`. AEGIS does not follow an unverified cursor. |
 | Compatibility with real AWS | Unverified and out of initial scope | Floci compatibility must not be presented as AWS parity. |
 
 ## Implemented runtime architecture
@@ -82,7 +84,7 @@ flowchart LR
 
 ### Adapter contract
 
-Each adapter declares service and operation metadata, required permissions/inputs, whether pagination is verified, a read-only collection function, a normalizer, and error mapping. It returns observations plus operation-level errors and unsupported outcomes. An empty successful list is an observed empty result, never a fabricated resource. A failed operation produces a partial inventory, not an empty-success claim.
+Each `AdapterSpec` declares an AWS service, operation, resource type, bounded read invocation where the API accepts a limit, and response normalizer. `FlociAdapter` applies explicit connect/read timeouts, disables SDK retries, and maps errors. It detects provider continuation markers but does not follow cursors whose behavior is not verified; such a response is recorded as `INCOMPLETE` with its observed first-page resources. An empty successful list is an observed empty result, never a fabricated resource. A failed operation produces an incomplete inventory, not an empty-success claim.
 
 ## Proposed directory structure
 
@@ -168,5 +170,5 @@ Phase 6 added the optional, loopback-bound dashboard and read-only API. All ordi
 - Read-only mode is the only supported mode in the MVP.
 - Never persist AWS credentials or include them in evidence.
 - Use explicit bounded connect/read timeouts and disable automatic retries so a failed assessment does not silently repeat cloud calls.
-- Assessments are `COMPLETED` when all operations and applicable rule evaluations have sufficient evidence, `PARTIAL` when some operations fail/are unsupported or a rule returns `NOT_SUPPORTED`/`ERROR`, and `FAILED` when discovery has no successful operation. Empty inventory and operation errors do not create synthetic scope findings; reports prominently state when no resource-level conclusions are available.
+- Assessments are `COMPLETED` when all recorded operations and applicable rule evaluations have sufficient evidence, `PARTIAL` when operations fail, are unsupported/incomplete, or a rule returns `NOT_SUPPORTED`/`ERROR`, and `FAILED` when discovery has no successful operation. Empty inventory and operation errors do not create synthetic scope findings; reports prominently state when no resource-level conclusions are available. `ENUMERATED` means the configured allowlisted calls for a displayed service returned successfully; it is not a claim of full AWS service coverage.
 - The web server binds `127.0.0.1` and validates Host and same-origin POSTs. There is no authentication; loopback binding does not protect against every local threat.
