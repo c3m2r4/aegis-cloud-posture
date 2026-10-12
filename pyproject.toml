@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aegis-cloud-posture"
+version = "0.1.0"
+description = "Read-only local cloud inventory and assessment foundation"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["boto3>=1.34,<2", "typer>=0.12,<1", "python-dotenv>=1,<2"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "httpx>=0.27,<1"]
+dashboard = ["fastapi>=0.110,<1", "starlette>=0.46,<1", "uvicorn[standard]>=0.27,<1", "Jinja2>=3.1,<4"]
+
+[project.scripts]
+aegis = "aegis.cli:app"
+aegis-web = "aegis.web:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aegis = ["templates/*.html", "static/*.css", "static/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

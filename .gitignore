@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+aegis.db
+*.scan.lock
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example

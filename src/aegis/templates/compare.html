@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Compare assessments · AEGIS{% endblock %}
+{% block breadcrumb %}Compare assessments{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><div class="eyebrow">HISTORICAL REVIEW</div><h1>Compare assessments</h1><p>Compare two persisted runs using AEGIS's evidence-aware classifications.</p></div>
+  <a class="button button-secondary" href="/assessments">Assessment history <span aria-hidden="true">→</span></a>
+</section>
+<div id="comparison-error" class="error-banner" hidden role="alert"></div>
+<section class="panel compare-picker">
+  <div class="picker-grid"><label>Previous assessment<select id="previous-assessment"><option value="">Loading saved runs…</option></select></label><label>Current assessment<select id="current-assessment"><option value="">Loading saved runs…</option></select></label><button id="run-comparison" class="button button-primary" type="button">Compare saved runs <span aria-hidden="true">→</span></button></div>
+  <p class="muted small-text">Previous must be earlier than Current, and both runs must use the same endpoint. The latest compatible pair is preselected when available. The selector lists up to 100 saved runs; no new assessment is started.</p>
+</section>
+<div id="comparison-loading" class="loading-state" hidden>Comparing persisted assessments…</div>
+<div id="comparison-results"></div>
+<div class="data-footnote"><span class="info-icon" aria-hidden="true">i</span><span>Missing current evaluations are not resolutions. Unsupported or errored checks are never counted as passes.</span></div>
+{% endblock %}

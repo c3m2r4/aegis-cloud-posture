@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Overview · AEGIS{% endblock %}
+{% block breadcrumb %}Overview{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><div class="eyebrow">AEGIS · LOCAL SECURITY WORKSPACE</div><h1>Cloud Security Command Center</h1><p>Saved inventory, rule outcomes, and evidence coverage from the latest assessment.</p></div>
+  <div class="heading-actions"><button id="new-assessment" class="button button-primary" type="button">＋ New assessment</button><button id="overview-refresh" class="button button-secondary" type="button"><span aria-hidden="true">↻</span> Refresh saved data</button></div>
+</section>
+<div id="overview-error" class="error-banner" hidden role="alert"></div>
+<section id="context-cards" class="context-strip" aria-label="Latest assessment scope">
+  <article class="context-card"><span class="context-icon" aria-hidden="true">⌂</span><div><div class="metric-label">CONFIGURED ENDPOINT</div><div class="context-value" id="context-endpoint">Waiting for saved data</div></div></article>
+  <article class="context-card"><span class="context-icon context-icon-blue" aria-hidden="true">◎</span><div><div class="metric-label">REGION</div><div class="context-value" id="context-region">—</div></div></article>
+  <article class="context-card"><span class="context-icon context-icon-green" aria-hidden="true">◷</span><div><div class="metric-label">LATEST ASSESSMENT</div><div class="context-value" id="context-status">—</div></div></article>
+  <article class="context-card context-total"><span class="context-icon context-icon-violet" aria-hidden="true">▤</span><div><div class="metric-label">SAVED ASSESSMENTS</div><div class="context-value" id="metric-total">—</div></div></article>
+</section>
+<section class="command-center-grid" aria-label="Latest assessment summary">
+  <article class="panel command-panel inventory-panel">
+    <div class="panel-heading"><div><div class="eyebrow">DISCOVERED INVENTORY</div><h2>Assets in scope</h2></div><span class="panel-symbol" aria-hidden="true">◈</span></div>
+    <div class="inventory-total"><span id="metric-resources">—</span><span>resources observed</span></div>
+    <div class="inventory-caption" id="metric-time">Based on the latest persisted assessment</div>
+    <div class="inventory-divider"></div>
+    <div class="subheading">Resource types <span>from saved inventory</span></div>
+    <div id="inventory-types" class="inventory-types"><div class="loading-state">Loading resource types…</div></div>
+    <a class="panel-link" href="/assessments">Browse assessment history <span aria-hidden="true">→</span></a>
+  </article>
+
+  <article class="panel command-panel outcomes-panel">
+    <div class="panel-heading"><div><div class="eyebrow">RULE EVALUATIONS</div><h2>Outcome distribution</h2></div><span id="latest-status-badge" class="badge badge-neutral">Awaiting data</span></div>
+    <div id="coverage-note" class="coverage-note" hidden></div>
+    <div class="outcome-visual">
+      <div class="outcome-ring-wrap">
+        <svg id="outcome-ring" class="outcome-ring" viewBox="0 0 120 120" role="img" aria-label="Confirmed failed rule count">
+          <circle class="outcome-ring-track" cx="60" cy="60" r="48"></circle>
+          <circle id="outcome-ring-value" class="outcome-ring-value" cx="60" cy="60" r="48"></circle>
+        </svg>
+        <div class="ring-center"><strong id="metric-findings">—</strong><span>evaluations</span></div>
+      </div>
+      <div id="outcome-list" class="outcome-list"><div class="loading-state">Loading persisted outcomes…</div></div>
+    </div>
+    <div class="severity-block"><div class="subheading">Confirmed findings by severity <span>FAIL outcomes only</span></div><div id="severity-list" class="severity-list"><div class="loading-state">Loading severity counts…</div></div></div>
+    <div class="ring-caption"><span class="severity-mark high"></span><span>Ring shows the share of evaluations with confirmed FAIL outcomes. It is not a compliance score.</span></div>
+  </article>
+
+  <article class="panel command-panel coverage-panel">
+    <div class="panel-heading"><div><div class="eyebrow">COLLECTION COVERAGE</div><h2>Assessment signals</h2></div><span class="panel-symbol panel-symbol-amber" aria-hidden="true">⌁</span></div>
+    <div class="coverage-stat"><span class="coverage-stat-icon">✓</span><div><strong id="coverage-operations">—</strong><span>read operations recorded</span></div></div>
+    <div class="coverage-stat coverage-stat-red"><span class="coverage-stat-icon">!</span><div><strong id="coverage-errors">—</strong><span>operation or rule errors</span></div></div>
+    <div class="coverage-stat coverage-stat-amber"><span class="coverage-stat-icon">◌</span><div><strong id="coverage-unsupported">—</strong><span>unsupported operations</span></div></div>
+    <div id="coverage-status-list" class="coverage-status-list"></div>
+    <p class="coverage-disclaimer">Unsupported checks and errors are evidence gaps, not passes.</p>
+    <a class="panel-link" id="coverage-detail-link" href="/assessments">Review persisted details <span aria-hidden="true">→</span></a>
+  </article>
+</section>
+
+<section class="command-bottom-grid">
+  <article class="panel command-panel cases-panel">
+    <div class="panel-heading"><div class="case-heading"><span class="case-icon case-icon-red" aria-hidden="true">▲</span><div><h2>Confirmed findings to review</h2><p>Persisted FAIL outcomes, ordered by severity.</p></div></div><a class="text-link" id="findings-view-all" href="/assessments">View assessment <span aria-hidden="true">→</span></a></div>
+    <div id="top-findings" class="command-list"><div class="loading-state">Loading confirmed findings…</div></div>
+  </article>
+  <article class="panel command-panel cases-panel">
+    <div class="panel-heading"><div class="case-heading"><span class="case-icon case-icon-amber" aria-hidden="true">◇</span><div><h2>Evidence gaps to review</h2><p>Unsupported and errored rule evaluations from this run.</p></div></div></div>
+    <div id="evidence-gaps" class="command-list"><div class="loading-state">Loading evidence gaps…</div></div>
+  </article>
+</section>
+<section class="panel command-panel recent-panel">
+  <div class="panel-heading"><div><div class="eyebrow">LOCAL HISTORY</div><h2>Recent assessment activity</h2></div><a class="text-link" href="/assessments">View all <span aria-hidden="true">→</span></a></div>
+  <div id="recent-assessments" class="table-wrap"><div class="loading-state">Loading saved assessments…</div></div>
+</section>
+<div class="data-footnote"><span class="info-icon" aria-hidden="true">i</span><span>Assessment results are point-in-time observations. A partial run or missing capability is not a security pass.</span></div>
+<dialog id="assessment-dialog" class="workflow-dialog" aria-labelledby="workflow-title">
+  <div class="workflow-header"><div><div class="eyebrow">GUIDED CLOUD ASSESSMENT</div><h2 id="workflow-title">Review before scanning</h2></div><button id="workflow-close" class="button button-quiet" type="button" aria-label="Close">Close</button></div>
+  <div id="workflow-error" class="error-banner" hidden role="alert"></div>
+  <p id="workflow-intro" class="workflow-copy">The preview reads local configuration only. Preflight is an explicit read-only connectivity and discovery check; it may create the configured database parent and briefly creates/removes a write-probe file, but saves no assessment records. A confirmed assessment performs a fresh collection and saves sanitized evidence to the configured SQLite database.</p>
+  <div id="workflow-preview" class="workflow-section"><div class="loading-state">Loading local assessment preview…</div></div>
+  <div class="workflow-actions"><button id="workflow-preflight" class="button button-secondary" type="button" disabled>Run preflight checks</button><span id="workflow-readiness" class="badge badge-neutral">Preflight required</span></div>
+  <div id="workflow-checks" class="workflow-section" hidden></div>
+  <div id="workflow-confirmation" class="workflow-confirmation" hidden>
+    <strong>Confirm assessment run</strong>
+    <p>This sends the verified read-only requests shown above, evaluates the listed rules, and writes a new assessment to the local database. It may generate network activity and provider charges. A browser disconnect will not stop server-side work.</p>
+    <div class="workflow-actions"><button id="workflow-cancel" class="button button-quiet" type="button">Cancel</button><button id="workflow-start" class="button button-primary" type="button" disabled>Confirm and start scan</button></div>
+  </div>
+  <div id="workflow-run" class="workflow-section" hidden aria-live="polite"></div>
+</dialog>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Setup guide · AEGIS{% endblock %}
+{% block breadcrumb %}Setup and commands{% endblock %}
+{% block content %}
+<section class="page-heading"><div><div class="eyebrow">FIRST RUN · CLI REFERENCE</div><h1>Setup and command guide</h1><p>Use a read-only cloud identity. AEGIS does not load .env files; configuration is read from the process environment. Never paste secret values into the dashboard, screenshots, or shared logs.</p></div><a class="button button-primary" href="/?action=new-assessment">Open guided assessment</a></section>
+<section class="guide-grid">
+  <article class="panel guide-card"><div class="eyebrow">1 · INSTALL</div><h2>Install AEGIS</h2><p>AEGIS requires Python 3.11 or newer. From the project directory, check Python and pip, then install dashboard and test dependencies.</p><pre><code>python --version
+python -m pip --version
+python -m pip install -e '.[dashboard,test]'
+aegis version</code></pre><button class="button button-quiet copy-command" type="button" data-copy="python --version&#10;python -m pip --version&#10;python -m pip install -e '.[dashboard,test]'&#10;aegis version">Copy commands</button></article>
+  <article class="panel guide-card"><div class="eyebrow">2 · CONFIGURE</div><h2>Select endpoint, region, and database</h2><p>These are non-secret settings. The default endpoint is local Floci; replace it only with an intended provider endpoint.</p><pre><code>export AEGIS_ENDPOINT_URL='http://127.0.0.1:4566'
+export AEGIS_REGION='us-east-1'
+export AEGIS_DATABASE='./aegis.db'
+export AWS_PROFILE='your-read-only-profile'</code></pre><button class="button button-quiet copy-command" type="button" data-copy="export AEGIS_ENDPOINT_URL='http://127.0.0.1:4566'&#10;export AEGIS_REGION='us-east-1'&#10;export AEGIS_DATABASE='./aegis.db'&#10;export AWS_PROFILE='your-read-only-profile'">Copy command</button></article>
+  <article class="panel guide-card"><div class="eyebrow">3 · VERIFY</div><h2>Check prerequisites</h2><p>Doctor checks local configuration, SQLite, endpoint reachability, credential resolution, and STS identity. Preflight additionally discovers the verified read operations.</p><pre><code>aegis --help
+aegis config
+aegis doctor
+aegis preflight --json</code></pre><button class="button button-quiet copy-command" type="button" data-copy="aegis --help&#10;aegis config&#10;aegis doctor&#10;aegis preflight --json">Copy commands</button></article>
+  <article class="panel guide-card"><div class="eyebrow">4 · PREVIEW AND SCAN</div><h2>Review, then confirm</h2><p>Preview does not contact cloud services. Interactive scans ask for confirmation; scripts must pass <code>--yes</code>.</p><pre><code>aegis assess --preview
+aegis assess --yes</code></pre><button class="button button-quiet copy-command" type="button" data-copy="aegis assess --preview&#10;aegis assess --yes">Copy commands</button></article>
+  <article class="panel guide-card"><div class="eyebrow">5 · INVESTIGATE</div><h2>Review saved results</h2><p>Replace example IDs with identifiers printed by AEGIS. History and detail commands read SQLite only.</p><pre><code>aegis history
+aegis show ASSESSMENT_ID
+aegis findings ASSESSMENT_ID --outcome FAIL
+aegis resources ASSESSMENT_ID
+aegis operations ASSESSMENT_ID</code></pre><button class="button button-quiet copy-command" type="button" data-copy="aegis history&#10;aegis show ASSESSMENT_ID&#10;aegis findings ASSESSMENT_ID --outcome FAIL&#10;aegis resources ASSESSMENT_ID&#10;aegis operations ASSESSMENT_ID">Copy commands</button></article>
+  <article class="panel guide-card"><div class="eyebrow">6 · COMPARE AND REPORT</div><h2>Export persisted evidence</h2><pre><code>aegis compare PREVIOUS_ID CURRENT_ID
+aegis report --assessment ASSESSMENT_ID --format markdown
+aegis report --assessment ASSESSMENT_ID --format json</code></pre><button class="button button-quiet copy-command" type="button" data-copy="aegis compare PREVIOUS_ID CURRENT_ID&#10;aegis report --assessment ASSESSMENT_ID --format markdown&#10;aegis report --assessment ASSESSMENT_ID --format json">Copy commands</button></article>
+</section>
+<section class="panel guide-limitations"><div class="eyebrow">SCOPE AND SAFETY</div><h2>Understand what the results mean</h2><ul><li>Current checks cover local IAM policies, EC2 security-group management ingress, and CloudWatch log retention when the field is returned.</li><li>Only documented read operations are used. Pagination is disabled until verified; unsupported or errored evidence is never a pass.</li><li>Preflight is a deliberate cloud-read action. The assessment makes a fresh set of calls after confirmation.</li><li>Credentials are not entered in the dashboard, displayed by AEGIS, or saved in the assessment database.</li><li>The local dashboard has no authentication. Keep it bound to loopback and do not expose it to a network.</li></ul><p id="copy-status" class="muted small-text" aria-live="polite"></p></section>
+{% endblock %}

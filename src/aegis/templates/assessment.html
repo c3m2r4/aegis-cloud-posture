@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Assessment detail · AEGIS{% endblock %}
+{% block breadcrumb %}<a href="/assessments">Assessments</a><span class="crumb-sep">/</span>Detail{% endblock %}
+{% block content %}
+<section class="page-heading detail-heading">
+  <div><div class="eyebrow">ASSESSMENT DETAIL</div><h1>Assessment evidence</h1><p class="mono" id="assessment-id">{{ assessment_id }}</p></div>
+  <div class="heading-actions"><a class="button button-secondary" href="/assessments">← History</a><span id="detail-status" class="badge badge-neutral">Loading</span></div>
+</section>
+<div id="detail-error" class="error-banner" hidden role="alert"></div>
+<div id="detail-loading" class="loading-state panel">Loading saved assessment…</div>
+<div id="detail-content" hidden>
+  <section id="assessment-summary" class="metric-grid detail-metrics"></section>
+  <div id="partial-notice" class="notice-banner" hidden></div>
+  <section class="panel section-panel">
+    <div class="panel-heading"><div><div class="eyebrow">RULE EVALUATIONS</div><h2>Findings</h2></div><span class="muted small-text">Severity and outcome are separate</span></div>
+    <div class="filter-row">
+      <label>Outcome<select id="finding-outcome"><option value="">All outcomes</option><option>FAIL</option><option>PASS</option><option>NOT_APPLICABLE</option><option>NOT_SUPPORTED</option><option>ERROR</option></select></label>
+      <label>Severity<select id="finding-severity"><option value="">All severities</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>INFO</option></select></label>
+      <label class="filter-search">Resource or rule<input id="finding-search" type="search" placeholder="Search current results" autocomplete="off"></label>
+      <button id="finding-filter" class="button button-secondary" type="button">Apply filters</button>
+    </div>
+    <p class="search-note">Outcome and severity filters use the API. Text search applies to the currently loaded findings page only.</p>
+    <div id="findings-list"><div class="loading-state">Loading findings…</div></div>
+    <div class="pagination-row"><span id="findings-page" class="muted small-text"></span><div class="pagination-controls"><button id="findings-previous" class="button button-quiet" type="button">← Previous</button><button id="findings-next" class="button button-quiet" type="button">Next →</button></div></div>
+  </section>
+  <section class="panel section-panel">
+    <div class="panel-heading"><div><div class="eyebrow">NORMALIZED INVENTORY</div><h2>Resources</h2></div></div>
+    <div id="resources-list"><div class="loading-state">Loading resources…</div></div>
+    <div class="pagination-row"><span id="resources-page" class="muted small-text"></span><div class="pagination-controls"><button id="resources-previous" class="button button-quiet" type="button">← Previous</button><button id="resources-next" class="button button-quiet" type="button">Next →</button></div></div>
+  </section>
+  <section class="panel section-panel">
+    <div class="panel-heading"><div><div class="eyebrow">COLLECTION COVERAGE</div><h2>Operations</h2></div><span class="muted small-text">Response bodies are not shown</span></div>
+    <div id="operations-list"><div class="loading-state">Loading collection operations…</div></div>
+    <div class="pagination-row"><span id="operations-page" class="muted small-text"></span><div class="pagination-controls"><button id="operations-previous" class="button button-quiet" type="button">← Previous</button><button id="operations-next" class="button button-quiet" type="button">Next →</button></div></div>
+  </section>
+  <section class="panel section-panel report-panel">
+    <div><div class="eyebrow">EXPORTS</div><h2>Assessment reports</h2><p class="muted">Generated from this persisted assessment.</p></div>
+    <div class="report-links"><a id="report-markdown" class="button button-secondary" href="#">Download Markdown</a><a id="report-json" class="button button-secondary" href="#">Download JSON</a></div>
+  </section>
+</div>
+{% endblock %}
