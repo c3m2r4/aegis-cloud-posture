@@ -1,0 +1,2 @@
+# Install from the project directory with: python -m pip install -r requirements.txt
+-e .[dashboard,test]

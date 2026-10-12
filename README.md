@@ -5,9 +5,9 @@ AEGIS is a local-first, read-only cloud inventory and security assessment tool f
 ## Install and run
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -e '.[test]'
+python -m pip install -r requirements.txt
 aegis doctor
 aegis preflight
 aegis discover
@@ -91,7 +91,7 @@ See [the synthetic example report](docs/EXAMPLE_OUTPUT.md) for sanitized JSON an
 
 ## Local dashboard and API
 
-Install the optional dashboard dependencies with `python -m pip install -e '.[dashboard,test]'`, then start the local API with `aegis-web` (or `.venv/bin/aegis-web`). It binds to `127.0.0.1:8000`; set `AEGIS_WEB_PORT` to choose another local port. It reads the same `AEGIS_DATABASE` setting as the CLI. GET routes and page loads never collect cloud data. Explicit same-origin POST actions run preflight discovery or a confirmed assessment.
+Install the project, dashboard, and test dependencies with `python -m pip install -r requirements.txt` from the project directory, then start the local API with `aegis-web` (or `.venv/bin/aegis-web`). It binds to `127.0.0.1:8000`; set `AEGIS_WEB_PORT` to choose another local port. It reads the same `AEGIS_DATABASE` setting as the CLI. GET routes and page loads never collect cloud data. Explicit same-origin POST actions run preflight discovery or a confirmed assessment.
 
 The initial API exposes `/api/health`, `/api/overview`, `/api/assessments`, assessment detail, findings, resources, operations, JSON/Markdown reports, and persisted assessment comparisons. Assessment identifiers must be UUIDs. List APIs accept bounded `limit` (1–100) and `offset` (0–100000) parameters. Health and overview represent a missing database as an empty first-run state. Existing databases are opened with SQLite read-only mode; requests do not create, initialize, or migrate the database. Raw operation response bodies are never exposed by the API. Reports and comparisons reuse the stored reporting functions and evidence references.
 
@@ -107,13 +107,12 @@ The dashboard **New assessment** flow first loads a local-only preview. The expl
 
 Review the endpoint, region, account identity when returned, resource types, read operations, rule set, pagination status, known unsupported capabilities, evidence outputs, and network/possible-charge notice. **Confirm and start scan** is a separate action. It calls the existing service once; GET status polling does not call cloud APIs. The run state is queued, running, or a persisted terminal status (`COMPLETED`, `PARTIAL`, `FAILED`). No progress percentage is invented. The run UUID is also the persisted assessment ID, allowing terminal state recovery after a web process restart. A persisted `RUNNING` row after restart is shown as `UNKNOWN`; inspect its saved evidence/history before retrying. If the browser disconnects, check assessment history before retrying. A database-scoped lock prevents overlapping discovery or assessment runs across CLI/dashboard processes.
 
-CLI daily flow (use actual IDs printed by AEGIS). For real cloud use, select an appropriate read-only profile; do not set the profile when using the local dummy credentials in `.env`:
+CLI daily flow for local Floci (use actual IDs printed by AEGIS). The ignored `.env` supplies local-only dummy credentials; do not set `AWS_PROFILE` in this flow:
 
 ```bash
-python -m pip install -e '.[dashboard,test]'
+python -m pip install -r requirements.txt
 export AEGIS_ENDPOINT_URL='http://127.0.0.1:4566'
 export AEGIS_REGION='us-east-1'
-export AWS_PROFILE='your-read-only-profile'
 aegis config
 aegis doctor
 aegis preflight
